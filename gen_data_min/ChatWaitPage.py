@@ -17,7 +17,7 @@ def Make_Chat_Wait_Page(round_index: int, label : str ):
             Use the computed schedule to form temporary groups for this round.
             Each group is a pair from the schedule.
             """
-            pair_matrix_round = players[0].subsession.session.vars["my_matrix_max"][round_index]
+            pair_matrix_round = players[0].subsession.session.vars["my_matrix_min"][round_index]
 
             groups = []
             for pair in pair_matrix_round:

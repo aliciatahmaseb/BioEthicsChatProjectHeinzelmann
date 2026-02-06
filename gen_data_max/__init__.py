@@ -1,8 +1,8 @@
 from otree.api import *
 import numpy as np
 from .matching import ilp_schedule
-from .ChatWaitPage import Make_Chat_Wait_Page
-from .ChatPage import Make_Chat_page
+from gen_data_max.ChatWaitPage import Make_Chat_Wait_Page
+from gen_data_max.ChatPage import Make_Chat_page
 
 doc = """
 explanation of what happens: this is for the maximisation 
@@ -128,14 +128,21 @@ ChatC = Make_Chat_page(2)
 class Results(Page):
     pass
 
-
 page_sequence = [PreChatRating,
                  ResultsWaitPage,
                  ChatWaitPageA,
-                 ChatA
-                 #ChatWaitPageB,
-                 #ChatWaitPageC
-]
+                 ChatA,
+                 ChatWaitPageB,
+                 ChatB,
+                 ChatWaitPageC,
+                 ChatC
+                 ]
 
+#for round_index, statement in enumerate(C.STATEMENTS):
+#    page_sequence.append(Make_Chat_Wait_Page(round_index, statement))
+#    page_sequence.append(Make_Chat_page(round_index))
+
+
+#page_sequence.append(Results)
 
 

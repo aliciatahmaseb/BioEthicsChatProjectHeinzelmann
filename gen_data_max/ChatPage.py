@@ -1,7 +1,8 @@
 from otree.api import *
 
-def Make_Chat_page(statement):
+def Make_Chat_page(round_index):
     class Custom_Chat(Page):
+        template_name = "gen_data_max/Custom_Chat.html"
         #form_model = "player"
         #form_fields = ["chat_text"]
 
@@ -23,7 +24,16 @@ def Make_Chat_page(statement):
             # All the players that should chat together in this group.
             #pair = next(p for p in pair_matrix_round if (player.id_in_subsession - 1) in p)
 
-            channel = f"chat_statement_player_{player.id_in_subsession}"
+            # Get schedule for this round
+            pair_matrix_round = player.subsession.session.vars["my_matrix_max"][round_index]
+
+            # Find the pair for the current player
+            pair = next(p for p in pair_matrix_round if (player.id_in_subsession - 1) in p)
+
+            # Shared channel for both players
+            channel = f"chat_statement_{round_index}_{pair[0]}_{pair[1]}"
+
+            #channel = f"chat_statement_player_{player.id_in_subsession}"
 
             # return to the html page statements and nickname
             # both statements and nickname have been defined before
@@ -34,4 +44,7 @@ def Make_Chat_page(statement):
                 participant_label=player.chat_nickname,
                 channel = channel
             )
+
+    Custom_Chat.__name__ = f"ChatPage_{round_index}"
+
     return Custom_Chat

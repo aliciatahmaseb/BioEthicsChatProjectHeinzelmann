@@ -5,8 +5,7 @@
 
 <i>How much do you agree with the following statements?</i>
     <br><br>
-    {% for statement in statements %}
-    <strong>({{ forloop.counter }}) {{ statement }}</strong>
+    <strong>({{ counter }}) {{ statement }}</strong>
     <br><br>
 
 
@@ -19,15 +18,14 @@
     <table style="width:auto">
         <tr>
             <td>
-                <input type="range" name="rating_pre_{{ forloop.counter }}"  value="0" step="1"
+                <input type="range" name="rating_pre" min="0" max="100" value="0"
                        style="width:500px; appearance: none; height: 6px; background: #ddd; border-radius: 4px;"
                        min="0" max="100"
-                       oninput="document.getElementById('slider_{{ forloop.counter }}').innerText = this.value;">
-                <p>Your selected agreement: <span id="slider_{{ forloop.counter }}">0</span>%</p>
+                       oninput="document.getElementById('slider').innerText = this.value;">
+                <p>Your selected agreement: <span id="slider">0</span>%</p>
             </td>
         </tr>
     </table>
-{% endfor %}
     <br>
 
     <button style="background-color: #4CAF50; color: white;" type="submit">OK</button>

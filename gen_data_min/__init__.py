@@ -1,27 +1,30 @@
 from otree.api import *
 import numpy as np
 from .matching import ilp_schedule
-from gen_data_min.ChatWaitPage import Make_Chat_Wait_Page
-#from gen_data_min.ChatPage import Make_Chat_page
 
 doc = """
-explanation of what happens: this is for the minimisation 
-
-* gather data of the participants 
-* call the matching function 
-* use the pairs from schedule to assign them to chats for the statements we want them to chat about 
-* There will be around 5 chats 
+Minimisation experiment:
+- Pre-chat ratings (agreement + confidence)
+- Matching
+- Chats per statement
 """
 
+# ----------------------------------------------------------------
+# CONSTANTS
+# ----------------------------------------------------------------
 
 class C(BaseConstants):
     NAME_IN_URL = 'gen_data_min'
     PLAYERS_PER_GROUP = None
     STATEMENTS = ["A", "B", "C"]
-    NUM_ROUNDS = 1
-    NUM_PLAYERS = 14
     NUM_STATEMENTS = 3
+    NUM_ROUNDS = NUM_STATEMENTS
+    NUM_PLAYERS = 14
 
+
+# ----------------------------------------------------------------
+# MODELS
+# ----------------------------------------------------------------
 
 class Subsession(BaseSubsession):
     pass
@@ -33,85 +36,89 @@ class Group(BaseGroup):
 
 class Player(BasePlayer):
 
-    ### BEFORE CHAT ###
+    # BEFORE CHAT (per round)
+    rating_pre = models.IntegerField(min=0, max=100)
+    confidence_pre = models.IntegerField(min=0, max=100)
 
-    rating_pre_1 = models.IntegerField(min=0, max=101)
-    rating_pre_2 = models.IntegerField(min=0, max=101)
-    rating_pre_3 = models.IntegerField(min=0, max=101)
+    # AFTER CHAT (kept as before)
+    rating_post_1 = models.IntegerField(min=0, max=100)
+    rating_post_2 = models.IntegerField(min=0, max=100)
+    rating_post_3 = models.IntegerField(min=0, max=100)
 
-    ### AFTER CHAT ###
-
-    rating_post_1 = models.IntegerField(min=0, max=101)
-    rating_post_2 = models.IntegerField(min=0, max=101)
-    rating_post_3 = models.IntegerField(min=0, max=101)
-
-    # make sure each individual rating is stored in a matrix for the player:
     def get_ratings_array(self):
-        return np.array([
-            self.rating_pre_1,
-            self.rating_pre_2,
-            self.rating_pre_3
-        ], dtype =int)
+        """Collect pre-chat agreement ratings across rounds"""
+        return np.array(
+            [self.in_round(r).rating_pre for r in range(1, C.NUM_STATEMENTS + 1)],
+            dtype=int
+        )
 
     @property
     def chat_nickname(self):
-        # Show ID in subsession
-        # this property allows for sending name in each chat bubble as their nickname
-        # we want to make sure we see who is the player (but this is only for OWN interest -- needs to be removed)
         return f"Player{self.id_in_subsession}"
 
+
+# ----------------------------------------------------------------
+# MATCHING
+# ----------------------------------------------------------------
+
 def compute_pairing(player_values: np.ndarray):
+    schedule = ilp_schedule(player_values)
+    return schedule
 
-    data_min = player_values
 
-    print("Input Data:")
-    print(data_min)
+# ----------------------------------------------------------------
+# PAGES: PRE-CHAT (6 PAGES TOTAL)
+# ----------------------------------------------------------------
 
-    schedule = ilp_schedule(data_min)
-    my_matrix_min = schedule
-
-    print(my_matrix_min)
-
-    print("\nGenerated Schedule:")
-    for i, round in enumerate(schedule):
-        print(f"Round {i + 1}:")
-        print(round)
-    return my_matrix_min #will be stored for later use
-
-# PAGES
-
-## To get the valuations of the players ##
 class PreChatRating(Page):
     form_model = "player"
-    form_fields = ["rating_pre_1", "rating_pre_2", "rating_pre_3"]
+    form_fields = ["rating_pre"]
 
+    @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            statements = C.STATEMENTS
+            statement=C.STATEMENTS[player.round_number - 1],
+            counter=player.round_number,
         )
 
-## To create the pairs ##
+
+#class PreChatConfidence(Page):
+#    form_model = "player"
+#    form_fields = ["confidence_pre"]
+
+#    @staticmethod
+#    def vars_for_template(player: Player):
+#        return dict(
+#            statement=C.STATEMENTS[player.round_number - 1],
+#            counter=player.round_number,
+#        )
+
+
+# ----------------------------------------------------------------
+# MATCHING WAIT PAGE
+# ----------------------------------------------------------------
 
 class ResultsWaitPage(WaitPage):
     wait_for_all_groups = True
 
     @staticmethod
+    def is_displayed(player):
+        return player.round_number == C.NUM_STATEMENTS
+
+    @staticmethod
     def after_all_players_arrive(subsession: Subsession):
-        # via get_players I ask: give me all players in this app right now
         players = subsession.get_players()
+        data_minimisation = np.vstack([
+            [p.in_round(r).rating_pre for r in range(1, C.NUM_STATEMENTS + 1)]
+            for p in players
+        ])
+        subsession.session.vars["my_matrix_min"] = compute_pairing(data_minimisation)
+#        data = np.vstack([p.get_ratings_array() for p in players])
 
-        # create a matrix of all the players' p ratings for each statement (num_players x num_statements)
-        # array (i.e., a row) is to store numbers in a grid (is a matrix instead of a python list)
-        # np.vstack stacks the arrays into a 2D array (i.e., matrix)
-        data_minimisation = np.vstack([p.get_ratings_array() for p in players])
-        print("Data Matrix:", data_minimisation)
 
-        #compute pairs (schedule) - what is returned when calling compute_pairing
-        my_matrix_min = compute_pairing(data_minimisation)
-        print("Computed Schedule:", my_matrix_min)
-
-        # need to store the matrix!! - this is a list[list[tuple]]
-        subsession.session.vars["my_matrix_min"] = my_matrix_min
+# ----------------------------------------------------------------
+# CHAT WAIT PAGES
+# ----------------------------------------------------------------
 
 class ChatWaitPageA(WaitPage):
     wait_for_all_groups = True
@@ -119,116 +126,61 @@ class ChatWaitPageA(WaitPage):
     @staticmethod
     def after_all_players_arrive(subsession: Subsession):
         players = subsession.get_players()
-        schedule = subsession.session.vars["my_matrix_min"]
+        pairs = subsession.session.vars["my_matrix_min"][0]
+        subsession.set_group_matrix([[players[i], players[j]] for i, j in pairs])
 
-        round_pairs = schedule[0]  # A
 
-        group_matrix = []
-        for i, j in round_pairs:
-            group_matrix.append([
-                players[i],   # index → Player object
-                players[j]
-            ])
+class ChatWaitPageB(ChatWaitPageA):
+    pass
 
-        subsession.set_group_matrix(group_matrix)
 
-        print("\n=== Groups for Statement A ===")
-        for g in subsession.get_groups():
-            print([p.id_in_subsession for p in g.get_players()])
+class ChatWaitPageC(ChatWaitPageA):
+    pass
 
-class ChatWaitPageB(WaitPage):
-    wait_for_all_groups = True
 
-    @staticmethod
-    def after_all_players_arrive(subsession: Subsession):
-        players = subsession.get_players()
-        schedule = subsession.session.vars["my_matrix_min"]
-
-        round_pairs = schedule[1]  # A
-
-        group_matrix = []
-        for i, j in round_pairs:
-            group_matrix.append([
-                players[i],   # index → Player object
-                players[j]
-            ])
-
-        subsession.set_group_matrix(group_matrix)
-
-        print("\n=== Groups for Statement B ===")
-        for g in subsession.get_groups():
-            print([p.id_in_subsession for p in g.get_players()])
-class ChatWaitPageC(WaitPage):
-    wait_for_all_groups = True
-
-    @staticmethod
-    def after_all_players_arrive(subsession: Subsession):
-        players = subsession.get_players()
-        schedule = subsession.session.vars["my_matrix_min"]
-
-        round_pairs = schedule[2]  # A
-
-        group_matrix = []
-        for i, j in round_pairs:
-            group_matrix.append([
-                players[i],   # index → Player object
-                players[j]
-            ])
-
-        subsession.set_group_matrix(group_matrix)
-
-        print("\n=== Groups for Statement C ===")
-        for g in subsession.get_groups():
-            print([p.id_in_subsession for p in g.get_players()])
+# ----------------------------------------------------------------
+# CHAT PAGES
+# ----------------------------------------------------------------
 
 class ChatA(Page):
     @staticmethod
     def vars_for_template(player: Player):
-
-        # return to the html page statements and nickname
-        # both statements and nickname have been defined before
-        # find STATEMENTS in class C, and find chat_nickname in class player
         return dict(
-            statements=C.STATEMENTS[0],
-            nickname = player.chat_nickname,
-            participant_label=player.chat_nickname,
-            channel=f"chat_statement_A_group_{player.group.id_in_subsession}"
+            statement=C.STATEMENTS[0],
+            nickname=player.chat_nickname,
+            channel=f"chat_A_group_{player.group.id_in_subsession}"
         )
+
 
 class ChatB(Page):
     @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            statements=C.STATEMENTS[1],
+            statement=C.STATEMENTS[1],
             nickname=player.chat_nickname,
-            participant_label=player.chat_nickname,
-            channel=f"chat_statement_B_group_{player.group.id_in_subsession}"
+            channel=f"chat_B_group_{player.group.id_in_subsession}"
         )
+
 
 class ChatC(Page):
     @staticmethod
     def vars_for_template(player: Player):
         return dict(
-            statements=C.STATEMENTS[2],
+            statement=C.STATEMENTS[2],
             nickname=player.chat_nickname,
-            participant_label=player.chat_nickname,
-            channel = f"chat_statement_C_group_{player.group.id_in_subsession}" #create unique identifier for each chat room
-            # chat_statement_C_Group -> indicate that the chat corresponds to statement B
-            # Ex - chat_statement_B_Group_3 if the players are in
+            channel=f"chat_C_group_{player.group.id_in_subsession}"
         )
 
-class Results(Page):
-    pass
 
-page_sequence = [PreChatRating,
-                 ResultsWaitPage,
-                 ChatWaitPageA,
-                 ChatA,
-                 ChatWaitPageB,
-                 ChatB,
-                 ChatWaitPageC,
-                 ChatC
-                 ]
+# ----------------------------------------------------------------
+# PAGE SEQUENCE
+# ----------------------------------------------------------------
 
-
-
+page_sequence = [
+    PreChatRating,
+#    PreChatConfidence,
+    ResultsWaitPage,
+    ChatWaitPageA, ChatA,
+    ChatWaitPageB, ChatB,
+    ChatWaitPageC, ChatC,
+]
